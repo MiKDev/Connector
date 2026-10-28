@@ -1,0 +1,31 @@
+#!/bin/busybox sh
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+umask 077
+chmod 755 / /etc
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev
+mkdir -p /dev/pts /run /tmp /.modloop
+mount -t devpts devpts /dev/pts
+mount -t tmpfs -o mode=0755 tmpfs /run
+mount -t tmpfs -o mode=1777 tmpfs /tmp
+if [ ! -e /lib/modules ] && [ -d /usr/lib/modules ]; then ln -s /usr/lib/modules /lib/modules; fi
+modprobe loop
+modprobe squashfs
+mount -t squashfs -o loop,ro /modloop /.modloop || exec sh
+rm -rf /lib/modules
+ln -s /.modloop/modules /lib/modules
+apk add --force-non-repository --no-network /packages/*.apk > /run/packages.log 2>&1 || { cat /run/packages.log >/dev/console; exec sh; }
+rm -rf /packages
+busybox syslogd -O /run/syslog.log -s 128
+for module in virtio_pci virtio_net virtio_console af_key xfrm_user esp4 ppp_generic ppp_async l2tp_ppp ppp_mppe; do modprobe "$module" 2>/dev/null; done
+test -c /dev/ppp || mknod /dev/ppp c 108 0
+chmod 600 /dev/ppp
+ip link set lo up
+ip link set eth0 up
+ip address add 10.0.2.15/24 dev eth0
+ip route add default via 10.0.2.2 dev eth0
+printf 'nameserver 10.0.2.3\n' >/etc/resolv.conf
+echo 0 >/proc/sys/net/ipv4/conf/all/rp_filter
+echo 0 >/proc/sys/net/ipv4/conf/default/rp_filter
+exec /usr/bin/python3 /opt/connector/gateway.py

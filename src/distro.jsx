@@ -1,0 +1,33 @@
+import React from 'react';
+import { Server } from 'lucide-react';
+import ubuntu from './distro-icons/ubuntu.svg';
+import debian from './distro-icons/debian.svg';
+import fedora from './distro-icons/fedora.svg';
+import redhat from './distro-icons/redhat.svg';
+import centos from './distro-icons/centos.svg';
+import rocky from './distro-icons/rockylinux.svg';
+import alma from './distro-icons/almalinux.svg';
+import alpine from './distro-icons/alpinelinux.svg';
+import arch from './distro-icons/archlinux.svg';
+import manjaro from './distro-icons/manjaro.svg';
+import suse from './distro-icons/opensuse.svg';
+import gentoo from './distro-icons/gentoo.svg';
+import nixos from './distro-icons/nixos.svg';
+import kali from './distro-icons/kalilinux.svg';
+import mint from './distro-icons/linuxmint.svg';
+import linux from './distro-icons/linux.svg';
+const icons = { ubuntu,debian,fedora,rhel:redhat,centos,rocky,almalinux:alma,alpine,arch,manjaro,opensuse:suse,sles:suse,gentoo,nixos,kali,linuxmint:mint,linux };
+const colors = { ubuntu:'#e95420', debian:'#d70a53', fedora:'#51a2da', rhel:'#ee0000', centos:'#a473c0', rocky:'#10b981', almalinux:'#81b956', alpine:'#0d597f', arch:'#1793d1', manjaro:'#35bf5c', opensuse:'#73ba25', sles:'#73ba25', gentoo:'#a394ce', nixos:'#7ebae4', kali:'#5098e5', linuxmint:'#87cf3e', amzn:'#ff9900', ol:'#ed1c24', linux:'#edca49', macos:'#c8d1de' };
+const names = { ubuntu:'Ubuntu', debian:'Debian', fedora:'Fedora', rhel:'Red Hat Enterprise Linux', centos:'CentOS', rocky:'Rocky Linux', almalinux:'AlmaLinux', alpine:'Alpine Linux', arch:'Arch Linux', manjaro:'Manjaro', opensuse:'openSUSE', sles:'SUSE Linux Enterprise', gentoo:'Gentoo', nixos:'NixOS', kali:'Kali Linux', linuxmint:'Linux Mint', amzn:'Amazon Linux', ol:'Oracle Linux', linux:'Linux', macos:'macOS' };
+export function DistroIcon({ distro }) {
+  if (!colors[distro]) return <Server size={19}/>;
+  if (icons[distro]) return <span className="distro-logo" style={{background:colors[distro]}}><img src={icons[distro]} alt={names[distro]} title={names[distro]} width="20" height="20"/></span>;
+  let shape;
+  if (distro === 'ubuntu') shape = <><circle cx="16" cy="16" r="8" fill="none" stroke="white" strokeWidth="3"/>{[[16,5],[6.5,21.5],[25.5,21.5]].map(([cx,cy])=><circle key={cx} cx={cx} cy={cy} r="3" fill="white" stroke={colors[distro]} strokeWidth="1.5"/>)}</>;
+  else if (distro === 'debian') shape = <path d="M22 23C8 28 5 13 12 8c8-6 16 4 9 9-4 3-9-1-6-5" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"/>;
+  else if (['arch','alpine','manjaro','rocky'].includes(distro)) shape = <path d="M16 5L28 27H19l-3-7-3 7H4z" fill="white"/>;
+  else if (distro === 'fedora') shape = <><path d="M20 7h-3c-4 0-5 3-5 6v13M8 14h13" stroke="white" fill="none" strokeWidth="3" strokeLinecap="round"/><circle cx="21" cy="21" r="5" stroke="white" strokeWidth="2" fill="none"/></>;
+  else if (['rhel','ol'].includes(distro)) shape = <path d="M5 21c0-3 22-3 22 0s-22 6-22 0m5-3 2-10h8l3 10" fill="white"/>;
+  else shape = <text x="16" y="22" textAnchor="middle" fill="white" fontSize="16" fontWeight="700" fontFamily="sans-serif">{{centos:'C',almalinux:'A',opensuse:'S',sles:'S',gentoo:'g',nixos:'❄',kali:'K',linuxmint:'m',amzn:'a',linux:'L',macos:'M'}[distro]}</text>;
+  return <svg className="distro-icon" role="img" aria-label={names[distro]} viewBox="0 0 32 32" width="25" height="25"><title>{names[distro]}</title><rect width="32" height="32" rx="9" fill={colors[distro]}/>{shape}</svg>;
+}

@@ -1,0 +1,48 @@
+name: Desktop checks and packages
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  desktop:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y openssh-client python3 p7zip-full qemu-system-x86
+      - run: npm run prepare:gateway
+      - run: npm test
+      - run: npm run build
+      - if: runner.os == 'Windows'
+        run: npm run test:desktop
+      - if: runner.os == 'Windows'
+        run: npm run test:team-desktop
+      - if: runner.os == 'Windows'
+        run: node tests/credentials-desktop.cjs
+      - if: runner.os == 'Windows'
+        run: node tests/forwards-desktop.cjs
+      - if: runner.os == 'Windows'
+        run: node tests/diagnostics-desktop.cjs
+      - if: runner.os == 'Windows'
+        run: node tests/layout-desktop.cjs
+      - if: runner.os == 'Windows'
+        run: npm run pack:win
+      - if: runner.os == 'Linux'
+        run: npm run pack:linux
+      - uses: actions/upload-artifact@v4
+        with:
+          name: connector-${{ runner.os }}
+          path: |
+            release/*.exe
+            release/*.zip
+            release/*.AppImage
+            release/*.deb

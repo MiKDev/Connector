@@ -1,0 +1,27 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const zlib = require('node:zlib');
+const { tarEntries, cpioEntries, cpio } = require('./gateway-archive.cjs');
+const { digest } = require('./gateway-download.cjs');
+(async () => {
+  const cache = path.resolve('runtime-cache'), output = path.resolve(process.env.CONNECTOR_GATEWAY_TEST_IMAGE ? 'runtime-cache/gateway-test/images' : 'vpn-runtime/images'); fs.mkdirSync(output, { recursive: true });
+  const entries = new Map();
+  for (const e of cpioEntries(zlib.gunzipSync(fs.readFileSync(path.join(cache, 'iso/boot/initramfs-virt'))))) entries.set(e.name, e);
+  for (const e of tarEntries(zlib.gunzipSync(fs.readFileSync(path.join(cache, 'alpine-minirootfs-3.24.3-x86_64.tar.gz'))))) entries.set(e.name, e);
+  const add = (name, data, mode = 0o100644) => entries.set(name, { name, data: Buffer.isBuffer(data) ? data : Buffer.from(data), mode });
+  const packages = JSON.parse(fs.readFileSync(path.join(cache, 'packages.json')));
+  for (const pkg of packages.packages) add('packages/' + pkg.filename, fs.readFileSync(path.join(cache, 'apks', pkg.filename)));
+  add('init', fs.readFileSync('gateway/init'), 0o100755);
+  add('opt/connector/gateway.py', fs.readFileSync('gateway/gateway.py'), 0o100700);
+  if (process.env.CONNECTOR_GATEWAY_TEST_IMAGE) add('opt/connector/test-server.py', fs.readFileSync('gateway/test-server.py'), 0o100700);
+  add('modloop', fs.readFileSync(path.join(cache, 'iso/boot/modloop-virt')));
+  add('etc/hostname', 'connector-gateway\n');
+  add('etc/apk/repositories', '');
+  const initrd = path.join(output, 'gateway-initrd.gz'); fs.writeFileSync(initrd, cpio([...entries.values()]));
+  fs.copyFileSync(path.join(cache, 'iso/boot/vmlinuz-virt'), path.join(output, 'vmlinuz'));
+  fs.writeFileSync(path.resolve('vpn-runtime/packages.json'), JSON.stringify(packages, null, 2));
+  const manifest = { format: 1, architecture: 'x86_64', alpine: '3.24.3', images: {} };
+  for (const file of ['vmlinuz', 'gateway-initrd.gz']) manifest.images[file] = await digest(path.join(output, file));
+  fs.writeFileSync(path.join(path.dirname(output), 'manifest.json'), JSON.stringify(manifest, null, 2));
+  console.log('Gateway initramfs built:', Math.round(fs.statSync(initrd).size / 1048576), 'MiB;', entries.size, 'entries');
+})().catch(error => { console.error(error); process.exitCode = 1; });

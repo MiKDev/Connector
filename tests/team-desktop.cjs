@@ -1,0 +1,66 @@
+const { waitForState } = require('./desktop-wait.cjs');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { _electron: electron } = require('playwright');
+const { startServer } = require('./ssh-fixture.cjs');
+const root=path.resolve(__dirname,'..'),version=require('../package.json').version;
+const dirs=[],apps=[],errors=[];let fixture;
+async function launch(name){const directory=fs.mkdtempSync(path.join(os.tmpdir(),'connector-team-ui-'+name+'-'));dirs.push(directory);const env={...process.env,CONNECTOR_TEST_DATA:directory};delete env.ELECTRON_RUN_AS_NODE;
+  const desktop=await electron.launch({executablePath:process.env.CONNECTOR_EXECUTABLE||require('electron'),args:[...(process.env.CONNECTOR_EXECUTABLE?[]:[root]),'--disable-gpu'],env,timeout:40000});apps.push(desktop);const page=await desktop.firstWindow();page.on('pageerror',e=>errors.push(e.message));await page.getByRole('heading',{name:'Workspace',exact:true}).waitFor();await desktop.evaluate(({dialog})=>{dialog.showMessageBox=async()=>({response:1});});return {desktop,page};}
+async function nav(page,name){await page.getByRole('button',{name:name==='Terminals'?/^Terminals/:name,exact:name!=='Terminals'}).click();}
+(async()=>{
+  fixture=await startServer();const owner=await launch('owner'),client=await launch('client'),a=owner.page,b=client.page;
+  await a.getByRole('button',{name:'Add server',exact:true}).click();
+  for(const [label,value]of [['Server name','Team SSH'],['Host / IP address','127.0.0.1'],['Port',String(fixture.port)],['Username','tester'],['Group','Team']])await a.getByLabel(label,{exact:true}).fill(value);
+  await a.getByLabel('Authentication method',{exact:true}).selectOption('password');await a.getByLabel('Password',{exact:true}).fill('test-password');await a.getByRole('button',{name:'Save server',exact:true}).click();
+  await a.getByLabel('Copy Team SSH',{exact:true}).click();await waitForState(a,async()=>(await window.connector.state()).servers.length===2);
+  await a.getByLabel('Remove Team SSH (copy)',{exact:true}).click();await waitForState(a,async()=>(await window.connector.state()).servers.length===1);
+  await a.evaluate(()=>window.connector.saveVPN({name:'Team VPN',gateway:'vpn.invalid',username:'fixture',password:'vpn-fixture',psk:'psk-fixture'}));
+  await nav(a,'VPN & routing');await a.getByLabel('Copy VPN Team VPN',{exact:true}).click();await waitForState(a,async()=>(await window.connector.state()).vpns.length===2);
+  await a.getByLabel('Remove VPN Team VPN (copy)',{exact:true}).click();await waitForState(a,async()=>(await window.connector.state()).vpns.length===1);
+  await nav(a,'Server / Client');await a.getByLabel('Sharing bind IP').fill('127.0.0.1');await a.getByLabel('Sharing port').fill('0');await a.getByRole('button',{name:'Start server',exact:true}).click();
+  await a.getByRole('button',{name:'Create access key',exact:true}).click();await a.getByLabel('Access key name').fill('Colleague');await a.getByLabel('Advertised sharing address').fill('127.0.0.1');
+  await a.getByLabel('Share connection Team SSH',{exact:true}).check();await a.getByLabel('Share VPN Team VPN',{exact:true}).check();await a.getByLabel('Deliver passwords, private keys & agent authentication',{exact:true}).check();await a.getByLabel('View operator’s live terminals (read only)',{exact:true}).check();
+  await a.getByRole('button',{name:'Save access key',exact:true}).click();const invitation=await a.getByLabel('Generated invitation key').inputValue();assert.ok(invitation.startsWith('connector-share:'));await a.getByRole('button',{name:'Done',exact:true}).click();
+  await nav(b,'Server / Client');await b.getByRole('button',{name:/^My sharing servers/}).click();await b.getByLabel('Sharing server name').fill('Team operator');await b.getByLabel('Sharing invitation key').fill(invitation);await b.getByRole('button',{name:'Add & connect',exact:true}).click();
+  await waitForState(b,async()=>{const s=await window.connector.state();return s.team.clients[0]?.status==='connected'&&s.servers.length===1&&s.vpns.length===1;});
+  const initial=await b.evaluate(()=>window.connector.state());assert.equal(initial.servers[0].shared.version,1);assert.ok(initial.servers[0].hasSecret);assert.ok(initial.vpns[0].hasPSK);
+  await nav(b,'Workspace');await b.getByLabel('Persist Team SSH locally',{exact:true}).click();await waitForState(b,async()=>(await window.connector.state()).servers.some(s=>s.name==='Team SSH (saved)'&&!s.shared));
+  await nav(b,'VPN & routing');await b.getByLabel('Persist VPN Team VPN locally',{exact:true}).click();await waitForState(b,async()=>(await window.connector.state()).vpns.some(v=>v.name==='Team VPN (saved)'&&!v.shared));
+  await nav(b,'Workspace');assert.equal(await b.getByLabel('Copy Team SSH',{exact:true}).count(),0,'managed profile uses explicit Persist action');await b.locator('.server-row').filter({has:b.getByLabel('Persist Team SSH locally',{exact:true})}).getByRole('button',{name:'Connect',exact:true}).click();
+  await waitForState(b,async()=>(await window.connector.state()).servers.some(s=>s.shared&&s.distro==='ubuntu'));await nav(b,'Workspace');await b.getByRole('img',{name:'Ubuntu',exact:true}).waitFor();
+  await nav(a,'Workspace');await a.getByRole('button',{name:'Connect',exact:true}).click();await a.getByRole('heading',{name:'Terminals',exact:true}).waitFor();
+  await a.evaluate(()=>{window.ownerEvents=[];window.connector.onEvent(e=>{if(e.type==='terminal')window.ownerEvents.push(e);});});
+  await nav(a,'Server / Client');await a.getByRole('button',{name:'Live terminals',exact:true}).click();
+  await a.getByLabel('Terminal to share').selectOption({label:'Team SSH'});await a.getByLabel('Live viewing key').selectOption({label:'Colleague'});await a.getByRole('button',{name:'Start live broadcast',exact:true}).click();
+  await b.evaluate(()=>{window.clientCasts=[];window.connector.onEvent(e=>{if(e.type==='team-cast')window.clientCasts.push(e);});});
+  await nav(b,'Server / Client');await b.getByRole('button',{name:'Live terminals',exact:true}).click();await b.getByRole('button',{name:'Watch live',exact:true}).click();await b.locator('.live-viewer .badge').filter({hasText:'LIVE'}).waitFor();
+  await nav(a,'Terminals');await a.locator('.terminal-mount:visible .xterm-helper-textarea').focus();await a.keyboard.type('live-team-check\r');
+  await b.waitForFunction(()=>window.clientCasts.map(e=>e.data||'').join('').includes('live-team-check'));
+  await b.locator('.readonly-terminal .xterm-helper-textarea').focus();await b.keyboard.type('viewer-input-should-not-execute\r');await b.waitForTimeout(200);
+  assert.ok(!await a.evaluate(()=>window.ownerEvents.map(e=>e.data||'').join('').includes('viewer-input-should-not-execute')));
+  await nav(a,'Server / Client');await a.getByRole('button',{name:'Live terminals',exact:true}).click();
+  // This controlled checkbox commits only after the permission IPC succeeds.
+  const collaboration=a.getByRole('checkbox',{name:/^Collaborate with/});await collaboration.click();
+  await a.waitForFunction(()=>document.querySelector('input[aria-label^="Collaborate with"]')?.checked===true);
+  await b.locator('.live-viewer .badge').filter({hasText:'collaborating'}).waitFor();
+  await b.locator('.readonly-terminal .xterm-helper-textarea').focus();await b.keyboard.type('collaborator-command\r');
+  await a.waitForFunction(()=>window.ownerEvents.map(e=>e.data||'').join('').includes('collaborator-command'));
+  await client.desktop.evaluate(({clipboard})=>clipboard.writeText('collaborator-paste\r'));
+  await b.locator('.readonly-terminal').click({button:'right'});await a.waitForFunction(()=>window.ownerEvents.map(e=>e.data||'').join('').includes('collaborator-paste'));
+  await collaboration.click();await a.waitForFunction(()=>document.querySelector('input[aria-label^="Collaborate with"]')?.checked===false);await b.locator('.live-viewer .badge').filter({hasText:'read only'}).waitFor();
+  await b.locator('.readonly-terminal .xterm-helper-textarea').focus();await b.keyboard.type('revoked-collaborator-input\r');await b.locator('.readonly-terminal').click({button:'right'});await b.waitForTimeout(150);
+  assert.ok(!await a.evaluate(()=>window.ownerEvents.map(e=>e.data||'').join('').includes('revoked-collaborator-input')));
+  if(process.env.CONNECTOR_SCREENSHOTS==='1'){await b.screenshot({path:'test-results/11-live-client.png'});await nav(a,'Server / Client');await a.screenshot({path:'test-results/12-team-server.png'});}
+  await nav(a,'Workspace');await a.getByLabel('Edit Team SSH',{exact:true}).click();await a.getByLabel('Server name',{exact:true}).fill('Updated Team SSH');await a.getByRole('button',{name:'Save server',exact:true}).click();
+  await waitForState(b,async()=>{const s=await window.connector.state();return s.servers.some(p=>p.shared&&p.name==='Updated Team SSH'&&p.shared.version===2);});
+  await nav(a,'Server / Client');await a.getByRole('button',{name:'Revoke',exact:true}).click();await waitForState(b,async()=>{const s=await window.connector.state();return !s.servers.some(p=>p.shared)&&!s.vpns.some(p=>p.shared);});
+  const after=await b.evaluate(()=>window.connector.state());assert.equal(after.servers.length,1);assert.equal(after.servers[0].name,'Team SSH (saved)');assert.ok(after.servers[0].hasSecret);assert.equal(after.vpns.length,1);assert.ok(after.vpns[0].hasPSK);
+  await nav(b,'Workspace');await b.getByRole('button',{name:'Connect',exact:true}).click();await b.getByRole('heading',{name:'Terminals',exact:true}).waitFor();
+  assert.deepEqual(errors,[]);
+  fs.writeFileSync('test-results/team-desktop-report.json',JSON.stringify({passed:true,version,packaged:!!process.env.CONNECTOR_EXECUTABLE,checks:['UI persist of shared SSH credentials and VPN', 'persisted local SSH works after key revocation', 'two native Electron apps with separate OS-vault storage','UI connection/VPN duplication','TLS invitation generation and client enrollment','scoped shared credentials and profiles','managed profile copy hidden','real shared SSH and detected Ubuntu logo','live read-only terminal over TLS','viewer keyboard cannot reach operator','automatic profile v1 to v2 synchronization','revocation removes managed connections and VPNs'],rendererErrors:errors},null,2));
+  const report=JSON.parse(fs.readFileSync('test-results/team-desktop-report.json'));report.checks.push('operator grants collaboration to one connected viewer','collaborator keyboard and right-click paste reach actual source SSH PTY','unchecking Collaborate returns viewer to read only');fs.writeFileSync('test-results/team-desktop-report.json',JSON.stringify(report,null,2));
+  console.log('Team desktop integration passed.');
+})().catch(e=>{console.error(e);process.exitCode=1;}).finally(async()=>{for(const app of apps.reverse())await app.close().catch(()=>{});if(fixture)await fixture.close();for(const dir of dirs)fs.rmSync(dir,{recursive:true,force:true});});

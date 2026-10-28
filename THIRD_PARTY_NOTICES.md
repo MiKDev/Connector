@@ -1,0 +1,12 @@
+# Bundled runtime components
+
+Connector application source is MIT licensed. Bundled components retain their own licenses; this notice does not relicense them.
+
+- Electron and Chromium: licenses and third-party notices distributed in the application runtime (`LICENSE.electron.txt`, `LICENSES.chromium.html`). https://github.com/electron/electron
+- xterm.js and its fit/serialize addons: MIT. https://github.com/xtermjs/xterm.js
+- Linux distribution SVG marks under `src/distro-icons`: Simple Icons, CC0-1.0, https://github.com/simple-icons/simple-icons . Logos identify the detected operating system; respective trademarks belong to their owners. Icons are bundled locally and do not make runtime network requests.
+- QEMU Windows runtime: QEMU is primarily GPL-2.0; individual libraries and firmware have additional licenses. Root COPYING/COPYING.LIB and available component license notices are included in `resources/vpn-runtime/qemu`. Unmodified Windows binaries are from https://qemu.weilnetz.de/w64/ (20260811 build). Corresponding upstream source: https://download.qemu.org/ and publisher build/source information: https://qemu.weilnetz.de/w64/ . The download script records the exact binary URL and verifies the publisher's SHA-512.
+- Alpine Linux 3.24.3 kernel, root filesystem and signed packages: each package retains its own license (including Linux GPL-2.0-only, BusyBox GPL-2.0-only, strongSwan GPL-2.0-or-later, xl2tpd GPL-2.0-or-later, Python PSF-2.0, and the PPP suite's component licenses). Upstream package metadata and versions are recorded in `resources/vpn-runtime/packages.json`. Releases: https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/x86_64/ . Package recipes, source URLs, patches and license metadata: https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.24-stable . Source archives: https://distfiles.alpinelinux.org/distfiles/v3.24/ . Signed binary packages: https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/ .
+- Other JavaScript dependency licenses are distributed with their respective packages in the application archive. Exact versions and integrity hashes are recorded in package-lock.json.
+
+Build scripts under `scripts/gateway-*` document the downloaded artifacts and construction of the local runtime. Connector's modified guest init and Python agent are supplied in the `gateway` source directory. The test server is excluded from production images.
